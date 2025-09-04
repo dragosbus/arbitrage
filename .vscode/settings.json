@@ -1,0 +1,37 @@
+{
+    "rust-analyzer.server.path": "/home/dragos/.cargo/bin/rust-analyzer",
+    "rust-analyzer.cargo.buildScripts.enable": true,
+    "rust-analyzer.procMacro.enable": true,
+    "rust-analyzer.procMacro.attributes.enable": true,
+    "rust-analyzer.cargo.allFeatures": true,
+    "rust-analyzer.rustcSource": "discover",
+    "rust-analyzer.server.extraEnv": {
+        "RUSTUP_TOOLCHAIN": "stable-x86_64-unknown-linux-gnu",
+        "RUSTC": "/home/dragos/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc",
+        "LD_LIBRARY_PATH": "/home/dragos/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib:/home/dragos/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/lib",
+        "PATH": "/home/dragos/.cargo/bin:/home/dragos/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin:/usr/bin:/bin"
+    },
+    "rust-analyzer.cargo.extraEnv": {
+        "RUSTUP_TOOLCHAIN": "stable-x86_64-unknown-linux-gnu",
+        "RUSTC": "/home/dragos/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/bin/rustc",
+        "LD_LIBRARY_PATH": "/home/dragos/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib:/home/dragos/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib/rustlib/x86_64-unknown-linux-gnu/lib"
+    },
+    "rust-analyzer.cargo.target": null,
+    "rust-analyzer.checkOnSave.command": "check",
+    "rust-analyzer.diagnostics.experimental.enable": false,
+    "terminal.integrated.env.linux": {
+        "PATH": "${env:HOME}/.cargo/bin:${env:PATH}",
+        "RUSTUP_TOOLCHAIN": "stable",
+        "LD_LIBRARY_PATH": "/home/dragos/.rustup/toolchains/stable-x86_64-unknown-linux-gnu/lib"
+    },
+    // Disable all the noisy hints
+  "rust-analyzer.inlayHints.typeHints.enable": false,
+  "rust-analyzer.inlayHints.parameterHints.enable": false,
+  "rust-analyzer.inlayHints.chainingHints.enable": false,
+
+  // Keep closure return types (often not obvious)
+  "rust-analyzer.inlayHints.closureReturnTypeHints.enable": "always",
+
+  // Optional: keep lifetime elision hints if you like
+  "rust-analyzer.inlayHints.lifetimeElisionHints.enable": "never"
+}
