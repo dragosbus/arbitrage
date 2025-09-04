@@ -126,6 +126,7 @@ version = "0.1.0"
 dependencies = [
  "anyhow",
  "base64 0.22.1",
+ "borsh",
  "futures-util",
  "solana-account-decoder",
  "solana-client",

@@ -6,6 +6,7 @@ edition = "2021"
 [dependencies]
 anyhow = "1.0.99"
 base64 = "0.22.1"
+borsh = "1.5.7"
 futures-util = "0.3.31"
 solana-account-decoder = "3.0.0"
 solana-client = "3.0.0"
