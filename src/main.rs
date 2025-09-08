@@ -11,8 +11,10 @@ use solana_commitment_config::CommitmentConfig;
 use solana_sdk::{account, pubkey::Pubkey};
 use std::str::FromStr;
 use std::sync::Arc;
+use tokio::time::{sleep, Duration};
 use utils::{calculate_price_raw_B_per_a, decode_orca, decode_raydium, Data};
 
+#[derive(Debug)]
 struct Price {
     price: f64,
 }
@@ -97,11 +99,15 @@ async fn main() -> Result<(), anyhow::Error> {
 
     let markets = Arc::new(DashMap::<String, Price>::new());
 
+    let (tx, mut rx) = tokio::sync::mpsc::unbounded_channel();
+
     for pool in addresses.iter() {
         let markets = markets.clone();
         let ws_client_clone = Arc::clone(&ws_client);
         let config_clone = config.clone();
         let pool = pool.clone();
+
+        let tx = tx.clone();
 
         tokio::spawn(async move {
             let (mut stream, _) = ws_client_clone
@@ -121,7 +127,9 @@ async fn main() -> Result<(), anyhow::Error> {
                                     let price = calculate_price_raw_B_per_a(&Data {
                                         sqrt_price: decoded.sqrt_price,
                                     });
-                                    markets.insert(pool_name, Price { price: price });
+                                    // markets.insert(pool_name, Price { price: price });
+                                    tx.send((pool_name.clone(), Price { price: price }))
+                                        .unwrap();
                                 }
                                 Err(err) => {
                                     eprintln!("Error: {}", err)
@@ -132,7 +140,9 @@ async fn main() -> Result<(), anyhow::Error> {
                                     let price = calculate_price_raw_B_per_a(&Data {
                                         sqrt_price: decoded.sqrt_price_x64,
                                     });
-                                    markets.insert(pool_name, Price { price: price });
+                                    // markets.insert(pool_name, Price { price: price });
+                                    tx.send((pool_name.clone(), Price { price: price }))
+                                        .unwrap();
                                 }
                                 Err(err) => {
                                     eprintln!("Error:{}", err)
@@ -151,9 +161,18 @@ async fn main() -> Result<(), anyhow::Error> {
         });
     }
 
+    // tokio::spawn(async move {
+    //     loop {
+    //         for entry in markets.iter() {
+    //             println!("{:#?}: {:#?}", entry.key(), entry.price);
+    //         }
+    //         sleep(Duration::from_millis(200)).await
+    //     }
+    // });
+
     tokio::spawn(async move {
-        for entry in markets.iter() {
-            println!("{:#?}: {:#?}", entry.key(), entry.price);
+        while let Some((pool_name, price)) = rx.recv().await {
+            println!("Updated {}: {:#?}", pool_name, price);
         }
     });
 
