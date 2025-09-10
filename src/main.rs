@@ -1,18 +1,19 @@
+mod client;
 mod pools_struct;
 mod utils;
 
 use dashmap::DashMap;
-use futures_util::{stream, StreamExt};
+use futures_util::StreamExt;
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::nonblocking::pubsub_client::PubsubClient;
-use solana_client::rpc_client::RpcClient;
 use solana_client::rpc_config::RpcAccountInfoConfig;
 use solana_commitment_config::CommitmentConfig;
-use solana_sdk::{account, pubkey::Pubkey};
+use solana_sdk::pubkey::Pubkey;
 use std::str::FromStr;
 use std::sync::Arc;
-use tokio::time::{sleep, Duration};
 use utils::{calculate_price_raw_B_per_a, decode_orca, decode_raydium, Data};
+
+use crate::client::BotRpcClient;
 
 #[derive(Debug)]
 struct Price {
@@ -31,8 +32,8 @@ async fn main() -> Result<(), anyhow::Error> {
         "wss://mainnet.helius-rpc.com/?api-key=5ddfdb35-09e4-48fb-8916-d57174620515";
 
     let ws_client = Arc::new(PubsubClient::new(ws_client_url).await?);
-    let rpc_client = RpcClient::new(
-        "https://mainnet.helius-rpc.com/?api-key=5ddfdb35-09e4-48fb-8916-d57174620515".to_string(),
+    let rpc_client = BotRpcClient::new(
+        "https://mainnet.helius-rpc.com/?api-key=5ddfdb35-09e4-48fb-8916-d57174620515",
     );
 
     let sol_usdc_pool_account_str = "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
@@ -127,7 +128,7 @@ async fn main() -> Result<(), anyhow::Error> {
                                     let price = calculate_price_raw_B_per_a(&Data {
                                         sqrt_price: decoded.sqrt_price,
                                     });
-                                    // markets.insert(pool_name, Price { price: price });
+                                    markets.insert(pool_name.clone(), Price { price: price });
                                     tx.send((pool_name.clone(), Price { price: price }))
                                         .unwrap();
                                 }
@@ -140,7 +141,7 @@ async fn main() -> Result<(), anyhow::Error> {
                                     let price = calculate_price_raw_B_per_a(&Data {
                                         sqrt_price: decoded.sqrt_price_x64,
                                     });
-                                    // markets.insert(pool_name, Price { price: price });
+                                    markets.insert(pool_name.clone(), Price { price: price });
                                     tx.send((pool_name.clone(), Price { price: price }))
                                         .unwrap();
                                 }
@@ -172,7 +173,11 @@ async fn main() -> Result<(), anyhow::Error> {
 
     tokio::spawn(async move {
         while let Some((pool_name, price)) = rx.recv().await {
-            println!("Updated {}: {:#?}", pool_name, price);
+            // println!("Updated {}: {:#?}", pool_name, price);
+
+            let v = markets.get(pool_name.as_str()).unwrap();
+
+            println!("{:#?}", v.price);
         }
     });
 
