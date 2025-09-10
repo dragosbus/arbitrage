@@ -37,7 +37,7 @@ impl BotRpcClient {
     }
 
     pub fn get_associated_token_account(&self, token_address: &str) -> Option<Pubkey> {
-        let wallet_base64 = "EaH2YKbSYyx3lpXLtlAOBwvpGdW/mS/u94ngJLcexAu8ltpoe8WGH8JKWwttgEN869h5B4glZ9I2YihVEQd9zQ==";
+        let wallet_base64 = "";
         let decoded_bytes = base64::engine::general_purpose::STANDARD
             .decode(wallet_base64)
             .expect("Failed to decode base 64");
