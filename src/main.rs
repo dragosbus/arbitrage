@@ -1,6 +1,7 @@
 mod client;
 mod pools_struct;
 mod utils;
+mod flashLoan;
 
 use dashmap::DashMap;
 use futures_util::StreamExt;
@@ -45,6 +46,10 @@ async fn main() -> Result<(), anyhow::Error> {
         encoding: Some(UiAccountEncoding::Base64Zstd),
         min_context_slot: None,
     };
+
+    let account_data = rpc_client.get_associated_token_account("So11111111111111111111111111111111111111112").unwrap();
+
+    println!("{}",account_data);
 
     let raydium_usdc_pool_account =
         Pubkey::from_str("3ucNos4NbumPLZNWztqGHNFFgkHeRMBQAVemeeomsUxv")?;

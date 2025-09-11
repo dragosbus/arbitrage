@@ -1,3 +1,4 @@
+use std::fs;
 use std::str::FromStr;
 
 use base64::Engine;
@@ -37,7 +38,8 @@ impl BotRpcClient {
     }
 
     pub fn get_associated_token_account(&self, token_address: &str) -> Option<Pubkey> {
-        let wallet_base64 = "";
+        let wallet_base64 = fs::read_to_string("wallet.txt").expect("Failed to read");
+
         let decoded_bytes = base64::engine::general_purpose::STANDARD
             .decode(wallet_base64)
             .expect("Failed to decode base 64");

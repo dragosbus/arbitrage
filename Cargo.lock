@@ -129,6 +129,7 @@ dependencies = [
  "borsh 1.5.7",
  "dashmap 6.1.0",
  "futures-util",
+ "sha2 0.10.9",
  "solana-account-decoder",
  "solana-client",
  "solana-commitment-config",
