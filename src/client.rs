@@ -1,16 +1,14 @@
-use std::fs;
-use std::str::FromStr;
-
-use base64::Engine;
 use solana_client::{client_error, rpc_client::RpcClient};
 use solana_commitment_config::CommitmentConfig;
-use solana_sdk::{bs58, hash::Hash, signature::Keypair, signer::Signer};
+use solana_sdk::{hash::Hash, pubkey::Pubkey, signer::Signer};
 use spl_associated_token_account::get_associated_token_address_with_program_id;
-use spl_associated_token_account::solana_program::pubkey::Pubkey;
 use spl_token::ID as TOKEN_PROGRAM_ID;
+use std::str::FromStr;
+
+use crate::payer::get_payer;
 
 pub struct BotRpcClient {
-    connection: RpcClient,
+    pub connection: RpcClient,
 }
 
 impl BotRpcClient {
@@ -38,24 +36,21 @@ impl BotRpcClient {
     }
 
     pub fn get_associated_token_account(&self, token_address: &str) -> Option<Pubkey> {
-        let wallet_base64 = fs::read_to_string("wallet.txt").expect("Failed to read");
-
-        let decoded_bytes = base64::engine::general_purpose::STANDARD
-            .decode(wallet_base64)
-            .expect("Failed to decode base 64");
-        let base58_wallet = bs58::encode(decoded_bytes).into_string();
-
-        let wallet = Keypair::from_base58_string(&base58_wallet);
+        let wallet = get_payer();
 
         match &Pubkey::from_str(token_address) {
             Ok(address) => {
                 let account_data = get_associated_token_address_with_program_id(
-                    &Pubkey::new_from_array(wallet.pubkey().to_bytes()),
-                    &address,
+                    &spl_associated_token_account::solana_program::pubkey::Pubkey::new_from_array(
+                        wallet.pubkey().to_bytes(),
+                    ),
+                    &spl_associated_token_account::solana_program::pubkey::Pubkey::new_from_array(
+                        address.to_bytes(),
+                    ),
                     &TOKEN_PROGRAM_ID,
                 );
 
-                Some(account_data)
+                Some(Pubkey::new_from_array(account_data.to_bytes()))
             }
             Err(err) => {
                 eprintln!("Error: {}", err);

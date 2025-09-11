@@ -1,20 +1,26 @@
 mod client;
+mod flashLoan;
+mod payer;
 mod pools_struct;
 mod utils;
-mod flashLoan;
 
 use dashmap::DashMap;
 use futures_util::StreamExt;
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::nonblocking::pubsub_client::PubsubClient;
-use solana_client::rpc_config::RpcAccountInfoConfig;
+use solana_client::rpc_config::{RpcAccountInfoConfig, RpcSendTransactionConfig};
 use solana_commitment_config::CommitmentConfig;
+use solana_sdk::message::{Instruction, Message};
 use solana_sdk::pubkey::Pubkey;
+use solana_sdk::signer::Signer;
+use solana_sdk::transaction::Transaction;
 use std::str::FromStr;
 use std::sync::Arc;
 use utils::{calculate_price_raw_B_per_a, decode_orca, decode_raydium, Data};
 
 use crate::client::BotRpcClient;
+use crate::flashLoan::{borrow_instruction_builder, repay_instruction_builder};
+use crate::payer::get_payer;
 
 #[derive(Debug)]
 struct Price {
@@ -47,9 +53,50 @@ async fn main() -> Result<(), anyhow::Error> {
         min_context_slot: None,
     };
 
-    let account_data = rpc_client.get_associated_token_account("So11111111111111111111111111111111111111112").unwrap();
+    let account_data = rpc_client
+        .get_associated_token_account("So11111111111111111111111111111111111111112")
+        .unwrap();
 
-    println!("{}",account_data);
+    println!("{}", account_data);
+
+    let wallet = get_payer();
+
+    let liquidity = 1321864384;
+
+    let borrow_instruction = borrow_instruction_builder(wallet.pubkey(), account_data, liquidity);
+    let repay_instruction = repay_instruction_builder(wallet.pubkey(), liquidity, account_data, 1);
+
+    let mut instructions = Vec::<Instruction>::new();
+    instructions.append(&mut vec![borrow_instruction]);
+    instructions.append(&mut vec![repay_instruction]);
+
+    let (recent_blockhash, _) = rpc_client
+        .get_latest_block_hash(Some(CommitmentConfig::confirmed()))
+        .unwrap();
+
+    println!("{}", recent_blockhash);
+
+    // let tx = Transaction::new_signed_with_payer(
+    //     &instructions,
+    //     Some(&wallet.pubkey()),
+    //     &[wallet],
+    //     recent_blockhash,
+    // );
+
+    let mut tx = Transaction::new_unsigned(Message::new(&instructions, Some(&wallet.pubkey())));
+    tx.try_sign(&[wallet], recent_blockhash).unwrap();
+
+    let sig = rpc_client
+        .connection
+        .send_transaction_with_config(
+            &tx,
+            RpcSendTransactionConfig {
+                skip_preflight: true,
+                ..Default::default()
+            },
+        )
+        .unwrap();
+    println!("Tx signature: {}", sig);
 
     let raydium_usdc_pool_account =
         Pubkey::from_str("3ucNos4NbumPLZNWztqGHNFFgkHeRMBQAVemeeomsUxv")?;
