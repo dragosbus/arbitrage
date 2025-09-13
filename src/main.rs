@@ -9,18 +9,20 @@ use futures_util::StreamExt;
 use solana_account_decoder::UiAccountEncoding;
 use solana_client::nonblocking::pubsub_client::PubsubClient;
 use solana_client::rpc_config::{RpcAccountInfoConfig, RpcSendTransactionConfig};
+use solana_client::rpc_request::RpcRequest;
 use solana_commitment_config::CommitmentConfig;
-use solana_sdk::message::{ Instruction, Message};
+use solana_sdk::message::{AccountMeta, Instruction, Message};
 use solana_sdk::pubkey::Pubkey;
 use solana_sdk::signer::Signer;
 use solana_sdk::transaction::{Transaction, VersionedTransaction};
+use spl_token::instruction::transfer;
 use std::str::FromStr;
 use std::sync::Arc;
 use utils::{calculate_price_raw_B_per_a, decode_orca, decode_raydium, Data};
 
 use crate::client::BotRpcClient;
 use crate::flashLoan::{
-    borrow_instruction_builder, debug_instruction_data, repay_instruction_builder,
+    borrow_instruction_builder, debug_instruction_data, repay_instruction_builder, run_diagnostic,
 };
 use crate::payer::get_payer;
 use crate::utils::{set_compute_unit_limit, set_compute_unit_price};
@@ -42,9 +44,7 @@ async fn main() -> Result<(), anyhow::Error> {
         "wss://mainnet.helius-rpc.com/?api-key=5ddfdb35-09e4-48fb-8916-d57174620515";
 
     let ws_client = Arc::new(PubsubClient::new(ws_client_url).await?);
-    let rpc_client = BotRpcClient::new(
-        "https://mainnet.helius-rpc.com/?api-key=5ddfdb35-09e4-48fb-8916-d57174620515",
-    );
+    let rpc_client = BotRpcClient::new("https://api.mainnet-beta.solana.com");
 
     let sol_usdc_pool_account_str = "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
     let pool_account_pubkey = Pubkey::from_str(sol_usdc_pool_account_str)?;
@@ -56,72 +56,79 @@ async fn main() -> Result<(), anyhow::Error> {
         min_context_slot: None,
     };
 
-    let account_data = rpc_client
-        .get_associated_token_account("So11111111111111111111111111111111111111112")
-        .unwrap();
-
-    println!("{}", account_data);
-
     let wallet = get_payer();
 
-    let liquidity = 29494761130;
+    println!("{}", wallet.pubkey());
+
+    let account_data = spl_associated_token_account::get_associated_token_address(
+        &spl_associated_token_account::solana_program::pubkey::Pubkey::new_from_array(
+            wallet.pubkey().to_bytes(),
+        ),
+        &spl_associated_token_account::solana_program::pubkey::Pubkey::from_str(
+            "So11111111111111111111111111111111111111112",
+        )
+        .unwrap(),
+    );
+
+    let liquidity = 3_700_574_265;
 
     let compute_budget_ix = set_compute_unit_limit(800_000); // 800,000 CU to match or exceed successful tx
     let compute_price_ix = set_compute_unit_price(37198); // 0.1 lamports/CU priority fee
 
     let borrow_instruction = borrow_instruction_builder(
-        spl_token::solana_program::pubkey::Pubkey::new_from_array(wallet.pubkey().to_bytes()),
-        spl_token::solana_program::pubkey::Pubkey::new_from_array(account_data.to_bytes()),
+        wallet.pubkey(),
+        Pubkey::new_from_array(account_data.to_bytes()),
         liquidity,
     );
-    let repay_instruction = repay_instruction_builder(wallet.pubkey(), liquidity, account_data, 2);
+    let repay_instruction = repay_instruction_builder(
+        wallet.pubkey(),
+        liquidity,
+        Pubkey::new_from_array(account_data.to_bytes()),
+        2,
+    );
 
-    let mut instructions = Vec::<Instruction>::new();
+    let instructions = vec![
+        compute_budget_ix,
+        compute_price_ix,
+        borrow_instruction,
+        // ins,
+        repay_instruction,
+    ];
 
-    instructions.extend(vec![
-        Instruction {
-            accounts: [].to_vec(),
-            data: compute_budget_ix.data,
-            program_id: Pubkey::new_from_array(compute_budget_ix.program_id.to_bytes()),
-        },
-        Instruction {
-            accounts: [].to_vec(),
-            data: compute_price_ix.data,
-            program_id: Pubkey::new_from_array(compute_price_ix.program_id.to_bytes()),
-        },
-        Instruction {
-            accounts: borrow_instruction
-                .accounts
-                .into_iter()
-                .map(|p| solana_sdk::instruction::AccountMeta {
-                    pubkey: Pubkey::new_from_array(p.pubkey.to_bytes()),
-                    is_signer: p.is_signer,
-                    is_writable: p.is_writable,
-                })
-                .collect(),
-            data: borrow_instruction.data,
-            program_id: Pubkey::new_from_array(borrow_instruction.program_id.to_bytes()),
-        },
-        Instruction {
-            data: repay_instruction.data,
-            program_id: Pubkey::new_from_array(repay_instruction.program_id.to_bytes()),
-            accounts: repay_instruction
-                .accounts
-                .into_iter()
-                .map(|p| solana_sdk::instruction::AccountMeta {
-                    pubkey: Pubkey::new_from_array(p.pubkey.to_bytes()),
-                    is_signer: p.is_signer,
-                    is_writable: p.is_writable,
-                })
-                .collect(),
-        },
-    ]);
+    let transfer_instruction = transfer(
+        &spl_token::ID,
+        &spl_token::solana_program::pubkey::Pubkey::new_from_array(account_data.to_bytes()), // from (your ATA)
+        &spl_token::solana_program::pubkey::Pubkey::new_from_array(account_data.to_bytes()), // to (same account - dummy transfer)
+        &spl_token::solana_program::pubkey::Pubkey::new_from_array(wallet.pubkey().to_bytes()), // authority
+        &[],
+        1, // transfer 1 lamport to self (dummy operation)
+    )
+    .unwrap();
+
+    // let ins = Instruction {
+    //     data: transfer_instruction.data,
+    //     program_id: Pubkey::new_from_array(transfer_instruction.program_id.to_bytes()),
+    //     accounts: transfer_instruction
+    //         .accounts
+    //         .into_iter()
+    //         .map(|p| AccountMeta {
+    //             pubkey: Pubkey::new_from_array(p.pubkey.to_bytes()),
+    //             is_signer: p.is_signer,
+    //             is_writable: p.is_writable,
+    //         })
+    //         .collect(),
+    // };
 
     let (recent_blockhash, _) = rpc_client
         .get_latest_block_hash(Some(CommitmentConfig::confirmed()))
         .unwrap();
 
-    let mut tx = Transaction::new_unsigned(Message::new(&instructions, Some(&wallet.pubkey())));
+    let mut tx = Transaction::new_signed_with_payer(
+        &instructions,
+        Some(&wallet.pubkey()),
+        &[&wallet],
+        recent_blockhash,
+    );
     tx.try_sign(&[wallet], recent_blockhash).unwrap();
 
     // let msg =
@@ -152,6 +159,7 @@ async fn main() -> Result<(), anyhow::Error> {
                         for log in logs.as_ref().unwrap() {
                             println!("{}", log);
                         }
+                        break;
                     }
                 }
             }
