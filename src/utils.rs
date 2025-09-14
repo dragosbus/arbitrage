@@ -1,5 +1,9 @@
-use crate::pools_struct::orca::Whirlpool;
+use crate::pools_struct::error::PoolError;
+use crate::pools_struct::meteora::MeteoraPoolState;
+use crate::pools_struct::orca::WhirlpoolState;
 use crate::pools_struct::raydium::RaydiumPoolState;
+use crate::pools_struct::structs::DexType;
+use crate::pools_struct::structs::PriceFetcher;
 use base64::engine::{self, general_purpose};
 use base64::Engine;
 use borsh::BorshDeserialize;
@@ -9,35 +13,64 @@ use std::io::Cursor;
 use std::str::FromStr;
 use zstd::decode_all;
 
-pub struct Data {
-    pub sqrt_price: u128,
-}
+pub fn parse_encoded_data(encoded: &str, dex: DexType) -> Result<Box<dyn PriceFetcher>, PoolError> {
+    match dex {
+        DexType::Meteora => {
+            let bytes = base64::Engine::decode(&general_purpose::STANDARD, encoded).unwrap();
+            let raw_bytes = decode_all(Cursor::new(bytes)).expect("faled decoind all bytes");
 
-pub fn decode_orca(encoded: &str) -> Result<Whirlpool, Box<dyn std::error::Error>> {
-    let bytes = general_purpose::STANDARD.decode(encoded).unwrap();
+            let data_without_discriminator = &raw_bytes[8..];
 
-    let raw_bytes = decode_all(Cursor::new(bytes))?;
-    let decoded = Whirlpool::try_from_slice(&raw_bytes)?;
+            let decoded = MeteoraPoolState::try_from_slice(&data_without_discriminator)
+                .expect("failed decoding pool state");
 
-    Ok(decoded)
-}
+            Ok(Box::new(decoded))
+        }
+        DexType::Raydium => {
+            let bytes = base64::Engine::decode(&general_purpose::STANDARD, encoded).unwrap();
+            let raw_bytes = decode_all(Cursor::new(bytes)).expect("faled decoind all bytes");
 
-pub fn decode_raydium(encoded: &str) -> Result<RaydiumPoolState, Box<dyn std::error::Error>> {
-    let bytes = base64::Engine::decode(&general_purpose::STANDARD, encoded).unwrap();
-    let raw_bytes = decode_all(Cursor::new(bytes))?;
+            let data_without_discriminator = &raw_bytes[8..];
 
-    let data_without_discriminator = &raw_bytes[8..];
+            let decoded = RaydiumPoolState::try_from_slice(&data_without_discriminator)
+                .expect("failed decoding pool state");
 
-    let decoded = RaydiumPoolState::try_from_slice(&data_without_discriminator)?;
+            Ok(Box::new(decoded))
+        }
+        DexType::Orca => {
+            let bytes = general_purpose::STANDARD.decode(encoded).unwrap();
 
-    Ok(decoded)
-}
+            let raw_bytes = decode_all(Cursor::new(bytes)).expect("faled decoind all bytes");
+            let decoded =
+                WhirlpoolState::try_from_slice(&raw_bytes).expect("failed decoding pool state");
 
-pub fn calculate_price_raw_B_per_a(data: &Data) -> f64 {
-    let price_sqrt_root = (data.sqrt_price as f64) / (2_u128.pow(64) as f64);
-    let price = (price_sqrt_root as f64).powi(2);
+            Ok(Box::new(decoded))
+        }
+        // DexType::HumidiFi => {
+        //     let price = 0f64;
 
-    price
+        //     Ok(price)
+        // }
+        // DexType::Lifinity => {
+        //     let price = 0f64;
+
+        //     Ok(price)
+        // }
+        // DexType::PancakeSwap => {
+        //     let price = 0f64;
+
+        //     Ok(price)
+        // }
+        // DexType::SolFiV2 => {
+        //     let price = 0f64;
+
+        //     Ok(price)
+        // }
+        _ => {
+            eprintln!("Unknown pool type");
+            Err(PoolError::InvalidPoolData.into())
+        }
+    }
 }
 
 pub fn set_compute_unit_limit(units: u32) -> Instruction {

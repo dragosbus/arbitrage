@@ -1,6 +1,8 @@
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_sdk::pubkey::Pubkey;
 
+use crate::pools_struct::{error::PoolError, structs::PriceFetcher};
+
 // Number of reward tokens
 pub const REWARD_NUM: usize = 3;
 pub const TICK_ARRAY_BITMAP_SIZE: usize = 16;
@@ -71,4 +73,27 @@ pub struct RaydiumPoolState {
     pub recent_epoch: u64,
     pub padding1: [u64; 24],
     pub padding2: [u64; 32],
+}
+
+impl RaydiumPoolState {
+    pub fn calculate_price(&self) -> Result<f64, PoolError> {
+        if self.sqrt_price_x64 == 0 {
+            return Err(PoolError::PriceCalculationFailed.into());
+        }
+
+        let price_sqrt_root = (self.sqrt_price_x64 as f64) / (2_u128.pow(64) as f64);
+        let price = (price_sqrt_root as f64).powi(2);
+
+        Ok(price)
+    }
+}
+
+impl PriceFetcher for RaydiumPoolState {
+    fn get_dex_name(&self) -> &'static str {
+        "raydium"
+    }
+
+    fn get_price(&self) -> Result<f64, PoolError> {
+        self.calculate_price()
+    }
 }

@@ -18,14 +18,12 @@ use solana_sdk::transaction::{Transaction, VersionedTransaction};
 use spl_token::instruction::transfer;
 use std::str::FromStr;
 use std::sync::Arc;
-use utils::{calculate_price_raw_B_per_a, decode_orca, decode_raydium, Data};
 
 use crate::client::BotRpcClient;
-use crate::flashLoan::{
-    borrow_instruction_builder, debug_instruction_data, repay_instruction_builder, run_diagnostic,
-};
+use crate::flashLoan::{borrow_instruction_builder, repay_instruction_builder};
 use crate::payer::get_payer;
-use crate::utils::{set_compute_unit_limit, set_compute_unit_price};
+use crate::pools_struct::structs::DexType;
+use crate::utils::{parse_encoded_data, set_compute_unit_limit, set_compute_unit_price};
 
 #[derive(Debug)]
 struct Price {
@@ -36,6 +34,7 @@ struct Price {
 struct Pool {
     name: String,
     pool_id: Pubkey,
+    pool: DexType,
 }
 
 #[tokio::main]
@@ -46,9 +45,6 @@ async fn main() -> Result<(), anyhow::Error> {
     let ws_client = Arc::new(PubsubClient::new(ws_client_url).await?);
     let rpc_client = BotRpcClient::new("https://api.mainnet-beta.solana.com");
 
-    let sol_usdc_pool_account_str = "Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE";
-    let pool_account_pubkey = Pubkey::from_str(sol_usdc_pool_account_str)?;
-
     let config = RpcAccountInfoConfig {
         commitment: Some(CommitmentConfig::confirmed()),
         data_slice: None,
@@ -57,8 +53,6 @@ async fn main() -> Result<(), anyhow::Error> {
     };
 
     let wallet = get_payer();
-
-    println!("{}", wallet.pubkey());
 
     let account_data = spl_associated_token_account::get_associated_token_address(
         &spl_associated_token_account::solana_program::pubkey::Pubkey::new_from_array(
@@ -119,68 +113,107 @@ async fn main() -> Result<(), anyhow::Error> {
     //         .collect(),
     // };
 
-    let (recent_blockhash, _) = rpc_client
-        .get_latest_block_hash(Some(CommitmentConfig::confirmed()))
-        .unwrap();
+    // let (recent_blockhash, _) = rpc_client
+    //     .get_latest_block_hash(Some(CommitmentConfig::confirmed()))
+    //     .unwrap();
 
-    let mut tx = Transaction::new_signed_with_payer(
-        &instructions,
-        Some(&wallet.pubkey()),
-        &[&wallet],
-        recent_blockhash,
-    );
-    tx.try_sign(&[wallet], recent_blockhash).unwrap();
+    // let mut tx = Transaction::new_signed_with_payer(
+    //     &instructions,
+    //     Some(&wallet.pubkey()),
+    //     &[&wallet],
+    //     recent_blockhash,
+    // );
+    // tx.try_sign(&[wallet], recent_blockhash).unwrap();
 
-    // let msg =
-    //     v0::Message::try_compile(&wallet.pubkey(), &instructions, &[], recent_blockhash).unwrap();
+    // // let msg =
+    // //     v0::Message::try_compile(&wallet.pubkey(), &instructions, &[], recent_blockhash).unwrap();
 
-    // let tx = VersionedTransaction::try_new(VersionedMessage::V0(msg), &[&wallet]).unwrap();
+    // // let tx = VersionedTransaction::try_new(VersionedMessage::V0(msg), &[&wallet]).unwrap();
 
-    let sig = rpc_client
-        .connection
-        .send_transaction_with_config(
-            &tx,
-            RpcSendTransactionConfig {
-                skip_preflight: true,
-                ..Default::default()
-            },
-        )
-        .unwrap();
-    println!("Tx signature: {}", sig);
+    // let sig = rpc_client
+    //     .connection
+    //     .send_transaction_with_config(
+    //         &tx,
+    //         RpcSendTransactionConfig {
+    //             skip_preflight: true,
+    //             ..Default::default()
+    //         },
+    //     )
+    //     .unwrap();
+    // println!("Tx signature: {}", sig);
 
-    loop {
-        match rpc_client.connection.get_transaction(
-            &sig,
-            solana_transaction_status_client_types::UiTransactionEncoding::Base64,
-        ) {
-            Ok(trans) => {
-                if let Some(meta) = trans.transaction.meta {
-                    if let logs = meta.log_messages {
-                        for log in logs.as_ref().unwrap() {
-                            println!("{}", log);
-                        }
-                        break;
-                    }
-                }
-            }
-            Err(err) => {
-                eprintln!("ERROR: {}", err)
-            }
-        }
-    }
+    // loop {
+    //     match rpc_client.connection.get_transaction(
+    //         &sig,
+    //         solana_transaction_status_client_types::UiTransactionEncoding::Base64,
+    //     ) {
+    //         Ok(trans) => {
+    //             if let Some(meta) = trans.transaction.meta {
+    //                 if let logs = meta.log_messages {
+    //                     for log in logs.as_ref().unwrap() {
+    //                         println!("{}", log);
+    //                     }
+    //                     break;
+    //                 }
+    //             }
+    //         }
+    //         Err(err) => {
+    //             eprintln!("ERROR: {}", err)
+    //         }
+    //     }
+    // }
 
+    let pool_account_pubkey = Pubkey::from_str("Czfq3xZZDmsdGdUyrNLtRhGc47cXcZtLG4crryfu44zE")?;
     let raydium_usdc_pool_account =
         Pubkey::from_str("3ucNos4NbumPLZNWztqGHNFFgkHeRMBQAVemeeomsUxv")?;
+    let meteora_usdc_sol_pool_1 = Pubkey::from_str("8Pm2kZpnxD3hoMmt4bjStX2Pw2Z9abpbHzZxMPqxPmie")?;
+    let meteora_usdc_sol_pool_2 = Pubkey::from_str("HTvjzsfX3yU6BUodCjZ5vZkUrAxMDTrBs3CJaq43ashR")?;
+    let humidifi_usdc_sol_pool = Pubkey::from_str("FksffEqnBRixYGR791Qw2MgdU7zNCpHVFYBL4Fa4qVuH")?;
+    let solfiv2_usdc_sol_pool = Pubkey::from_str("65ZHSArs5XxPseKQbB1B4r16vDxMWnCxHMzogDAqiDUc")?;
+    let pancake_usdc_sol_pool = Pubkey::from_str("4QU2NpRaqmKMvPSwVKQDeW4V6JFEKJdkzbzdauumD9qN")?;
+    let lifinity_usdc_sol_pool = Pubkey::from_str("DrRd8gYMJu9XGxLhwTCPdHNLXCKHsxJtMpbn62YqmwQe")?;
 
     let addresses = [
         Pool {
             name: "orca".to_string(),
             pool_id: pool_account_pubkey,
+            pool: DexType::Orca,
         },
         Pool {
             name: "raydium".to_string(),
             pool_id: raydium_usdc_pool_account,
+            pool: DexType::Raydium,
         },
+        Pool {
+            name: "meteora_1".to_string(),
+            pool_id: meteora_usdc_sol_pool_1,
+            pool: DexType::Meteora,
+        },
+        // Pool {
+        //     name: "meteora_2".to_string(),
+        //     pool_id: meteora_usdc_sol_pool_2,
+        //     pool: DexType::Meteora,
+        // },
+        // Pool {
+        //     name: "humidifi".to_string(),
+        //     pool_id: humidifi_usdc_sol_pool,
+        //     pool: DexType::HumidiFi,
+        // },
+        // Pool {
+        //     name: "solfiv2".to_string(),
+        //     pool_id: solfiv2_usdc_sol_pool,
+        //     pool: DexType::SolFiV2,
+        // },
+        // Pool {
+        //     name: "pancake".to_string(),
+        //     pool_id: pancake_usdc_sol_pool,
+        //     pool: DexType::PancakeSwap,
+        // },
+        // Pool {
+        //     name: "lifinity".to_string(),
+        //     pool_id: lifinity_usdc_sol_pool,
+        //     pool: DexType::SolFiV2,
+        // },
     ];
 
     // loop {
@@ -243,39 +276,19 @@ async fn main() -> Result<(), anyhow::Error> {
                 match &account.value.data {
                     solana_account_decoder::UiAccountData::Binary(encoded, _)
                     | solana_account_decoder::UiAccountData::LegacyBinary(encoded) => {
-                        let pool_name = pool.name.clone();
+                        match parse_encoded_data(encoded, pool.pool) {
+                            Ok(data) => {
+                                let price = data.get_price().expect("e");
+                                let name = data.get_dex_name();
 
-                        match pool_name.as_str() {
-                            "orca" => match &decode_orca(encoded) {
-                                Ok(decoded) => {
-                                    let price = calculate_price_raw_B_per_a(&Data {
-                                        sqrt_price: decoded.sqrt_price,
-                                    });
-                                    markets.insert(pool_name.clone(), Price { price: price });
-                                    tx.send((pool_name.clone(), Price { price: price }))
-                                        .unwrap();
-                                }
-                                Err(err) => {
-                                    eprintln!("Error: {}", err)
-                                }
-                            },
-                            "raydium" => match &decode_raydium(encoded) {
-                                Ok(decoded) => {
-                                    let price = calculate_price_raw_B_per_a(&Data {
-                                        sqrt_price: decoded.sqrt_price_x64,
-                                    });
-                                    markets.insert(pool_name.clone(), Price { price: price });
-                                    tx.send((pool_name.clone(), Price { price: price }))
-                                        .unwrap();
-                                }
-                                Err(err) => {
-                                    eprintln!("Error:{}", err)
-                                }
-                            },
-                            _ => {
-                                eprintln!("Unknown pool name: {}", pool_name);
+                                markets.insert(name.to_string(), Price { price: price });
+
+                                tx.send((name, Price { price: price })).unwrap();
                             }
-                        };
+                            Err(err) => {
+                                eprintln!("Error:{}", err)
+                            }
+                        }
                     }
                     _ => {
                         eprintln!("Error")
@@ -298,9 +311,9 @@ async fn main() -> Result<(), anyhow::Error> {
         while let Some((pool_name, price)) = rx.recv().await {
             // println!("Updated {}: {:#?}", pool_name, price);
 
-            let v = markets.get(pool_name.as_str()).unwrap();
+            let v = markets.get(pool_name).unwrap();
 
-            println!("{:#?}", v.price);
+            println!("{} -> {}", v.key(), v.price);
         }
     });
 

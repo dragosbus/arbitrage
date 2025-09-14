@@ -1,6 +1,7 @@
-// src/whirlpool.rs
 use borsh::{BorshDeserialize, BorshSerialize};
 use solana_sdk::pubkey::Pubkey;
+
+use crate::pools_struct::{error::PoolError, structs::PriceFetcher};
 
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
 pub struct RewardInfo {
@@ -12,7 +13,7 @@ pub struct RewardInfo {
 }
 
 #[derive(BorshDeserialize, BorshSerialize, Debug)]
-pub struct Whirlpool {
+pub struct WhirlpoolState {
     pub discriminator: [u8; 8],
     pub whirlpools_config: Pubkey,
     pub whirlpool_bump: u8,
@@ -33,4 +34,26 @@ pub struct Whirlpool {
     pub fee_growth_global_b: u128,
     pub reward_last_updated_timestamp: u64,
     pub reward_infos: [RewardInfo; 3], // adjust NUM_REWARDS
+}
+
+impl WhirlpoolState {
+    pub fn calculate_price(&self) -> Result<f64, PoolError> {
+        if self.sqrt_price == 0 {
+            return Err(PoolError::PriceCalculationFailed.into());
+        }
+        let price_sqrt_root = (self.sqrt_price as f64) / (2_u128.pow(64) as f64);
+        let price = (price_sqrt_root as f64).powi(2);
+
+        Ok(price)
+    }
+}
+
+impl PriceFetcher for WhirlpoolState {
+    fn get_dex_name(&self) -> &'static str {
+        "orca"
+    }
+
+    fn get_price(&self) -> Result<f64, PoolError> {
+        self.calculate_price()
+    }
 }
